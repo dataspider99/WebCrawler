@@ -391,7 +391,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 								}
 							}
 							info.OutLinks = outlinks
-							stats.AddToOutlink(len(outlinks))
+							stats.AddToOutlink(int64(len(outlinks)))
 							if len(outlinks) > 0 {
 								stats.AddToSiteWithOutlinks(1)
 							}
