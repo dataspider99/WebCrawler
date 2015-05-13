@@ -1,0 +1,21 @@
+<component name="libraryTable">
+  <library name="GOPATH &lt;Downloader&gt;">
+    <CLASSES>
+      <root url="file://$USER_HOME$/coding/go/packages/src/gopkg.in" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/github.com" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/golang.org" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+    <excluded>
+      <root url="file://$USER_HOME$/coding/go/packages/src/github.com/moovweb/gokogiri/.git" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/github.com/streamrail/concurrent-map/.git" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/github.com/franela/goreq/.git" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/golang.org/x/net/.git" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/golang.org/x/net/html/testdata" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/golang.org/x/net/html/charset/testdata" />
+      <root url="file://$USER_HOME$/coding/go/packages/src/gopkg.in/mgo.v2/.git" />
+      <root url="file://$PROJECT_DIR$" />
+    </excluded>
+  </library>
+</component>
