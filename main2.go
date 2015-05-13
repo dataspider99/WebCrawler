@@ -20,6 +20,7 @@ import (
 	"gopkg.in/mgo.v2"
 	"path"
 	"github.com/streamrail/concurrent-map"
+	"sync/atomic"
 )
 
 var urlsFile string
@@ -69,7 +70,7 @@ func init() {
 	flag.BoolVar(&download_content, "content", true, "Download content of the url")
 	flag.BoolVar(&store_headers, "headers", true, "Store response headers")
 	flag.StringVar(&mongo_server, "server", "50.112.92.232", "Mongo server to dump results")
-	flag.StringVar(&mongo_collection, "collection", "urls", "Mongo collection to dump data")
+	flag.StringVar(&mongo_collection, "collection", "urls2", "Mongo collection to dump data")
 
 	flag.IntVar(&timeout, "timeout", 60, "Timeout for downloads of url")
 	goreq.SetConnectTimeout(time.Second * 30)
@@ -123,19 +124,71 @@ type Urltest struct {
 }
 
 type DownloadStats struct {
-	in_download_queue int
-	retry_count int
-	download_failed int
-	http_errors int
-	parsing_errors int
-	outlinks_count int
-	sites_with_outlinks int
-	download_completed int
-	failed_domains int
-	completed_domains int
-	duplicate_urls int
-	already_downloaded int
+	in_download_queue int64
+	retry_count int64
+	download_failed int64
+	http_errors int64
+	parsing_errors int64
+	outlinks_count int64
+	sites_with_outlinks int64
+	download_completed int64
+	failed_domains int64
+	completed_domains int64
+	duplicate_urls int64
+	already_downloaded int64
 }
+func (self *DownloadStats) AddToAlreadyDownloaded(val int64) {
+	atomic.AddInt64(&self.already_downloaded, val)
+}
+
+func (self *DownloadStats) AddToCompletedDomain(val int64) {
+	atomic.AddInt64(&self.completed_domains, val)
+}
+
+func (self *DownloadStats) AddToQueue(val int64) {
+	atomic.AddInt64(&self.in_download_queue, val)
+}
+
+func (self *DownloadStats) RemoveFromQueue(val int64) {
+	atomic.AddInt64(&self.in_download_queue, -val)
+}
+
+
+func (self *DownloadStats) AddToDuplicateURLS(val int64) {
+	atomic.AddInt64(&self.duplicate_urls, val)
+}
+
+func (self *DownloadStats) AddToRetry(val int64) {
+	atomic.AddInt64(&self.retry_count, val)
+}
+func (self *DownloadStats) AddToDownloadFailed(val int64) {
+	atomic.AddInt64(&self.download_failed, val)
+}
+
+func (self *DownloadStats) AddToHttpErrors(val int64) {
+	atomic.AddInt64(&self.http_errors, val)
+}
+func (self *DownloadStats) AddToParsingError(val int64) {
+	atomic.AddInt64(&self.parsing_errors, val)
+}
+func (self *DownloadStats) AddToOutlink(val int64) {
+	atomic.AddInt64(&self.outlinks_count, val)
+}
+func (self *DownloadStats) AddToSiteWithOutlinks(val int64) {
+	atomic.AddInt64(&self.sites_with_outlinks, val)
+}
+func (self *DownloadStats) AddToDownloadCompleted(val int64) {
+	atomic.AddInt64(&self.download_completed, val)
+}
+func (self *DownloadStats) AddToFailedDomain(val int64) {
+	atomic.AddInt64(&self.failed_domains, val)
+}
+
+
+
+
+
+
 
 var stats = &DownloadStats{}
 
@@ -212,11 +265,11 @@ func check_url_download_needed(info Urltest) (bool) {
 	coll.FindId(info.CleanedURL).One(&x)
 	switch true {
 		case inqueue:
-			stats.duplicate_urls++
+			stats.AddToDuplicateURLS(1) //.duplicate_urls++
 			return false
 		case count > 0:
 			if (x.StatusCode != 0) {
-				stats.already_downloaded++
+				stats.AddToAlreadyDownloaded(1)
 				urls_maps.Set(cache_url, info.CleanedURL)
 				return false
 			}
@@ -231,7 +284,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 		sem <- true
 		go func(info *Urltest) {
 			defer func() { <-sem }()
-			stats.in_download_queue++
+			stats.AddToQueue(1)
 			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
 			cache_url := info.CleanedURL
 			println("Begining download for - " + info.CleanedURL)
@@ -257,13 +310,13 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				info.Errors = append(info.Errors, err.Error())
 				info.RetryCount ++
 				if (info.RetryCount <= MAX_RETRIES) {
-					stats.retry_count++
+					stats.AddToRetry(1)
 					defer func() {download_urls <- info}()
 				}else {
-					stats.download_failed++
+					stats.AddToDownloadFailed(1)
 					download_completed <- info
 				}
-				stats.in_download_queue--
+				stats.RemoveFromQueue(1)
 				return
 			} else {
 				if resp.Uri == "" {
@@ -281,17 +334,17 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 					info.RetryCount++
 					if (info.RetryCount <= MAX_RETRIES) {
 						defer func() {download_urls <- info}()
-						stats.retry_count++
-						stats.in_download_queue--
+						stats.AddToRetry(1)
+						stats.RemoveFromQueue(1)
 						return
 					} else {
-						stats.download_failed++
+						stats.AddToDownloadFailed(1)
 					}
 				}
 				if (resp.StatusCode != 200) {
 					println("Failed to download URL for - " + resp.Status + " " + info.CleanedURL)
 					info.AppendError(resp.Status)
-					stats.http_errors++
+					stats.AddToHttpErrors(1)
 				}
 				info.EffectiveURL = resp.Uri
 				purl, _ := url.Parse(resp.Uri)
@@ -301,7 +354,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				info.ContentType = resp.Header.Get("Content-Type")
 				info.Content, err = resp.Body.ToString()
 				if err != nil {
-					stats.parsing_errors++
+					stats.AddToParsingError(1)
 					info.AppendError(err.Error())
 				} else {
 					doc, err := gokogiri.ParseHtml([]byte(info.Content))
@@ -311,12 +364,12 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 						println("Failed to parse url - " + err.Error() + " " + info.CleanedURL)
 						info.AppendError(err.Error())
 						info.ParseFailed = true
-						stats.parsing_errors++
+						stats.AddToParsingError(1)
 					} else {
 						links_xpath := xpath.Compile("//a[@href] | //frame[@src] | //iframe[@src]")
 						root := doc.Root()
 						if root == nil {
-							stats.parsing_errors++
+							stats.AddToParsingError(1)
 							info.ParseFailed = true
 							println("Failed to get root element for - " + info.CleanedURL)
 						} else {
@@ -338,16 +391,16 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 								}
 							}
 							info.OutLinks = outlinks
-							stats.outlinks_count += len(outlinks)
+							stats.AddToOutlink(len(outlinks))
 							if len(outlinks) > 0 {
-								stats.sites_with_outlinks++
+								stats.AddToSiteWithOutlinks(1)
 							}
 						}
 					}
 				}
 				info.StatusCode = resp.StatusCode
 				info.Status = resp.Status
-				stats.download_completed++
+				stats.AddToDownloadCompleted(1)
 				fmt.Println("Download completed for - " + info.CleanedURL)
 				download_completed <- info
 			}
@@ -394,11 +447,11 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- *Urltest, downl
 			if err2 != nil {
 				info.DomainValid = false
 				info.Errors = append(info.Errors, err2.Error())
-				stats.failed_domains++
+				stats.AddToFailedDomain(1)
 				download_completed <- info
 			}else {
 				info.DomainValid = true
-				stats.completed_domains++
+				stats.AddToCompletedDomain(1)
 				if check_url_download_needed(*info) {
 					download_url <- info
 				}else {
@@ -472,7 +525,7 @@ func print_stats(stats_channel chan bool) {
 func completed_download(download_complete chan *Urltest, completed chan <- bool) {
 	for info := range download_complete {
 		//fmt.Println("%#v", info)
-		stats.in_download_queue--
+		stats.RemoveFromQueue(1)
 		println("Document received for - " + info.CleanedURL)
 		info.Time = time.Now().UTC()
 		//err = coll.Insert(&info)
