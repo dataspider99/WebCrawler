@@ -379,6 +379,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 				}
 				if (resp.StatusCode != 200) {
 					println("Failed to download URL for - " + resp.Status + " " + info.CleanedURL)
+					fmt.Printf("%#v", resp.Response)
 					info.AppendError(resp.Status)
 					stats.http_errors.IncOne()
 				}
