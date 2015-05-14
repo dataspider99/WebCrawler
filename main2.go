@@ -360,7 +360,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 					resp.Uri = info.CleanedURL
 				}
 
-				fmt.Printf("%#v", resp.Response)
+				//fmt.Printf("%#v", resp.Response)
 				if (resp.StatusCode >= 400 && resp.StatusCode < 500) {
 					parsed_url, _ := url.Parse(info.CleanedURL)
 					parsed_url.Path = "/"
@@ -564,7 +564,10 @@ func completed_download(download_complete chan Urltest, completed chan <- bool) 
 		println("Document received for - " + info.CleanedURL)
 		info.Time = time.Now().UTC()
 		//err = coll.Insert(&info)
-		coll.UpsertId(info.CleanedURL, &info)
+		_, err := coll.UpsertId(info.CleanedURL, &info)
+		if err != nil {
+			panic(err.Error())
+		}
 	}
 
 	println("All document completed")
