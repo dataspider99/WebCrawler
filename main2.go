@@ -379,6 +379,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 				}
 				if (resp.StatusCode != 200) {
 					println("Failed to download URL for - " + resp.Status + " " + info.CleanedURL)
+					fmt.Printf("%#v", resp.Response)
 					info.AppendError(resp.Status)
 					stats.http_errors.IncOne()
 				}
@@ -458,6 +459,10 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, downlo
 	sem := make(chan bool, concurrency)
 
 	for info := range (urls) {
+		info.DomainValid = true
+		download_url <- info
+		continue
+
 		wg.Add(1)
 		sem <- true
 		go func(info *Urltest, wg *sync.WaitGroup) {
