@@ -33,7 +33,7 @@ var timeout int
 var mongo_collection string
 
 var reww *regexp.Regexp
-var redots *regexp.Regexp
+var redots, renospace *regexp.Regexp
 var respaces *regexp.Regexp
 var rehttp *regexp.Regexp
 var rehttps *regexp.Regexp
@@ -62,6 +62,33 @@ type url_info struct {
 
 }
 
+type Counter struct {
+	value int64
+}
+
+func (self * Counter) DecOne() (int64) {
+	return self.Inc(-1)
+}
+
+func (self * Counter) IncOne() (int64) {
+	return self.Inc(1)
+}
+
+func (self * Counter) Inc(value int64) (int64) {
+	return atomic.AddInt64(&self.value, value)
+}
+
+func (self * Counter) Dec(value int64) (int64) {
+	return self.Inc(-value)
+}
+
+func (self *Counter) Value() (int64) {
+	return atomic.LoadInt64(&self.value)
+}
+
+func (self *Counter) String() (string) {
+	return strconv.FormatInt(self.Value(), 10)
+}
 
 func init() {
 	flag.StringVar(&urlsFile, "urls", "/home/tarun/IdeaProjects/GoScraper/urls2.txt", "File for input urls")
@@ -78,8 +105,9 @@ func init() {
 	respaces = regexp.MustCompile(`^\s+|\s+$`)
 	reww = regexp.MustCompile(`^(?i)\s*(\.)*(ww|wwww)\s*\.`)
 	redots = regexp.MustCompile(`\s*[.·]+\s*`)
-	rehttp = regexp.MustCompile(`^(?i)\s*ht[tp]{2,3}\s*[:.;,：]?\s*[\\/]+(ht[tp]{2,3}[:.;,：]?([\\/]+)?)?`)
-	rehttps = regexp.MustCompile(`^(?i)\s*ht[tp]{2,3}s\s*[:.,;：]?\s*[\\/]+(ht[tp]{2,3}s?[:.;,：]?([\\/]+)?)?`)
+	rehttp = regexp.MustCompile(`^(?i)\s*ht[tp]{2,}\s*[:.;,：]?\s*[\\/]+(ht[tp]{2,}[:.;,：]?([\\/]+)?)?`)
+	rehttps = regexp.MustCompile(`^(?i)\s*ht[tp]{2,}s\s*[:.,;：]?\s*[\\/]+(ht[tp]{2,}s?[:.;,：]?([\\/]+)?)?`)
+	renospace = regexp.MustCompile(`[\r\n\t\v\f]`)
 
 	if false {
 		u, _ := get_clean_url(`http://http.//www.schad-automation.com`)
@@ -124,19 +152,27 @@ type Urltest struct {
 }
 
 type DownloadStats struct {
-	in_download_queue int64
-	retry_count int64
-	download_failed int64
-	http_errors int64
-	parsing_errors int64
-	outlinks_count int64
-	sites_with_outlinks int64
-	download_completed int64
-	failed_domains int64
-	completed_domains int64
-	duplicate_urls int64
-	already_downloaded int64
+	in_download_queue Counter
+	retry_count Counter
+	download_failed Counter
+	http_errors Counter
+	parsing_errors Counter
+	outlinks_count Counter
+	sites_with_outlinks Counter
+	download_completed Counter
+	failed_domains Counter
+	completed_domains Counter
+	duplicate_urls Counter
+	already_downloaded Counter
 }
+
+func (self *DownloadStats) String() (string) {
+	return fmt.Sprintf(">>> Queue: %d, Retries: %d, Completed: %d, Failed: %d\n   Domains Failed:%d, Duplicate Urls: %d, Already Downloaded: %d",
+				self.in_download_queue.Value(), self.retry_count.Value(), self.download_completed.Value(), self.download_failed.Value(),
+				self.failed_domains.Value(), self.duplicate_urls.Value(), self.already_downloaded.Value())
+}
+
+/*
 func (self *DownloadStats) AddToAlreadyDownloaded(val int64) {
 	atomic.AddInt64(&self.already_downloaded, val)
 }
@@ -184,10 +220,7 @@ func (self *DownloadStats) AddToFailedDomain(val int64) {
 	atomic.AddInt64(&self.failed_domains, val)
 }
 
-
-
-
-
+*/
 
 
 var stats = &DownloadStats{}
@@ -264,27 +297,31 @@ func check_url_download_needed(info Urltest) (bool) {
 	var x Urltest
 	coll.FindId(info.CleanedURL).One(&x)
 	switch true {
-		case inqueue:
-			stats.AddToDuplicateURLS(1) //.duplicate_urls++
+	case inqueue:
+		stats.duplicate_urls.IncOne() //.duplicate_urls++
+		return false
+	case count > 0:
+		if (x.StatusCode != 0) {
+			stats.already_downloaded.IncOne()
+			urls_maps.Set(cache_url, info.CleanedURL)
 			return false
-		case count > 0:
-			if (x.StatusCode != 0) {
-				stats.AddToAlreadyDownloaded(1)
-				urls_maps.Set(cache_url, info.CleanedURL)
-				return false
-			}
 		}
+	}
 
 	return true
 }
 
-func download_urls(download_urls chan *Urltest, download_completed chan <- *Urltest) {
+func download_urls(download_urls chan *Urltest, download_completed chan <- Urltest) {
 	sem := make(chan bool, concurrency)
 	for info := range (download_urls) {
 		sem <- true
 		go func(info *Urltest) {
-			defer func() { <-sem }()
-			stats.AddToQueue(1)
+			defer func() {
+				<-sem
+				stats.in_download_queue.DecOne()
+			}()
+
+			stats.in_download_queue.IncOne()
 			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
 			cache_url := info.CleanedURL
 			println("Begining download for - " + info.CleanedURL)
@@ -294,7 +331,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				compression = nil
 			}
 
-			 req := goreq.Request{Uri:info.CleanedURL,
+			req := goreq.Request{Uri:info.CleanedURL,
 				RedirectHeaders:true,
 				MaxRedirects:20,
 				Insecure: true,
@@ -310,13 +347,13 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				info.Errors = append(info.Errors, err.Error())
 				info.RetryCount ++
 				if (info.RetryCount <= MAX_RETRIES) {
-					stats.AddToRetry(1)
+					stats.retry_count.IncOne()
 					defer func() {download_urls <- info}()
 				}else {
-					stats.AddToDownloadFailed(1)
-					download_completed <- info
+					stats.download_failed.IncOne()
+					download_completed <- *info
 				}
-				stats.RemoveFromQueue(1)
+				//stats.in_download_queue.DecOne()
 				return
 			} else {
 				if resp.Uri == "" {
@@ -324,7 +361,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				}
 
 				fmt.Printf("%#v", resp.Response)
-				if (resp.StatusCode >= 400 && resp.StatusCode < 500){
+				if (resp.StatusCode >= 400 && resp.StatusCode < 500) {
 					parsed_url, _ := url.Parse(info.CleanedURL)
 					parsed_url.Path = "/"
 					info.CleanedURL = parsed_url.String()
@@ -334,17 +371,16 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 					info.RetryCount++
 					if (info.RetryCount <= MAX_RETRIES) {
 						defer func() {download_urls <- info}()
-						stats.AddToRetry(1)
-						stats.RemoveFromQueue(1)
+						stats.retry_count.IncOne()
 						return
 					} else {
-						stats.AddToDownloadFailed(1)
+						stats.download_failed.IncOne()
 					}
 				}
 				if (resp.StatusCode != 200) {
 					println("Failed to download URL for - " + resp.Status + " " + info.CleanedURL)
 					info.AppendError(resp.Status)
-					stats.AddToHttpErrors(1)
+					stats.http_errors.IncOne()
 				}
 				info.EffectiveURL = resp.Uri
 				purl, _ := url.Parse(resp.Uri)
@@ -354,7 +390,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 				info.ContentType = resp.Header.Get("Content-Type")
 				info.Content, err = resp.Body.ToString()
 				if err != nil {
-					stats.AddToParsingError(1)
+					stats.parsing_errors.IncOne()
 					info.AppendError(err.Error())
 				} else {
 					doc, err := gokogiri.ParseHtml([]byte(info.Content))
@@ -364,12 +400,12 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 						println("Failed to parse url - " + err.Error() + " " + info.CleanedURL)
 						info.AppendError(err.Error())
 						info.ParseFailed = true
-						stats.AddToParsingError(1)
+						stats.parsing_errors.IncOne()
 					} else {
 						links_xpath := xpath.Compile("//a[@href] | //frame[@src] | //iframe[@src]")
 						root := doc.Root()
 						if root == nil {
-							stats.AddToParsingError(1)
+							stats.parsing_errors.IncOne()
 							info.ParseFailed = true
 							println("Failed to get root element for - " + info.CleanedURL)
 						} else {
@@ -380,7 +416,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 								var text, href string
 								if tagName == "a" {
 									href = link.Attr("href")
-									text = strings.TrimSpace(link.Content())
+									text = renospace.ReplaceAllString(strings.TrimSpace(link.Content()), "")
 								} else {
 									href = link.Attr("src")
 									text = ""
@@ -391,18 +427,18 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 								}
 							}
 							info.OutLinks = outlinks
-							stats.AddToOutlink(int64(len(outlinks)))
+							stats.outlinks_count.Inc(int64(len(outlinks)))
 							if len(outlinks) > 0 {
-								stats.AddToSiteWithOutlinks(1)
+								stats.sites_with_outlinks.IncOne()
 							}
 						}
 					}
 				}
 				info.StatusCode = resp.StatusCode
 				info.Status = resp.Status
-				stats.AddToDownloadCompleted(1)
+				stats.download_completed.IncOne()
 				fmt.Println("Download completed for - " + info.CleanedURL)
-				download_completed <- info
+				download_completed <- *info
 			}
 		}(info)
 	}
@@ -412,7 +448,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- *Urlt
 	println("Downloader finished. Exiting downloader code")
 }
 
-func verify_domain(urls <-chan *Urltest, domain_resolved chan <- *Urltest, download_url chan <- *Urltest, download_completed chan <- *Urltest, completed chan <- bool) {
+func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, download_url chan <- *Urltest, download_completed chan <- Urltest, completed chan <- bool) {
 	var wg sync.WaitGroup
 	sem := make(chan bool, concurrency)
 
@@ -447,11 +483,11 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- *Urltest, downl
 			if err2 != nil {
 				info.DomainValid = false
 				info.Errors = append(info.Errors, err2.Error())
-				stats.AddToFailedDomain(1)
-				download_completed <- info
+				stats.failed_domains.IncOne()
+				download_completed <- *info
 			}else {
 				info.DomainValid = true
-				stats.AddToCompletedDomain(1)
+				stats.completed_domains.IncOne()
 				if check_url_download_needed(*info) {
 					download_url <- info
 				}else {
@@ -461,7 +497,7 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- *Urltest, downl
 
 
 
-			domain_resolved <- info
+			domain_resolved <- *info
 		}(info, &wg)
 
 	}
@@ -475,7 +511,7 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- *Urltest, downl
 	completed <- true
 }
 
-func writer_result(writer *csv.Writer, domain_resolved <-chan *Urltest, completion chan <- bool) {
+func writer_result(writer *csv.Writer, domain_resolved <-chan Urltest, completion chan <- bool) {
 	for info := range domain_resolved {
 		var domain_valid string
 		if info.DomainValid {
@@ -512,7 +548,7 @@ func print_stats(stats_channel chan bool) {
 		//rate := stats.completed_domains + stats.failed_domains - previous_complete
 		//previous_complete = stats.completed_domains + stats.failed_domains
 		//fmt.Println("Resolved domains in 1 sec = ", rate)
-			fmt.Printf("%#v\n", stats)
+			fmt.Println(stats.String())
 			time.Sleep(time.Second * 5)
 			stats_channel <- true
 		default:
@@ -522,10 +558,9 @@ func print_stats(stats_channel chan bool) {
 }
 
 
-func completed_download(download_complete chan *Urltest, completed chan <- bool) {
+func completed_download(download_complete chan Urltest, completed chan <- bool) {
 	for info := range download_complete {
 		//fmt.Println("%#v", info)
-		stats.RemoveFromQueue(1)
 		println("Document received for - " + info.CleanedURL)
 		info.Time = time.Now().UTC()
 		//err = coll.Insert(&info)
@@ -582,9 +617,9 @@ func main() {
 	writer2 := csv.NewWriter(csvfile2)
 
 	domain_resolver := make(chan *Urltest, concurrency)
-	domain_resolved := make(chan *Urltest, concurrency)
+	domain_resolved := make(chan Urltest, concurrency)
 	download_url := make(chan *Urltest, concurrency * 4)
-	download_completed := make(chan *Urltest, concurrency * 2)
+	download_completed := make(chan Urltest, concurrency * 2)
 	completion := make(chan bool, 3)
 	stats_channel := make(chan bool, 1)
 	stats_channel <- true
