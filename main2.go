@@ -252,7 +252,7 @@ func get_clean_url(u string) (clean_url string, err error) {
 	return parsed.String(), err
 }
 
-const MAX_RETRIES = 1
+const MAX_RETRIES = 0
 
 func (info *Urltest) AppendError(error string) {
 	info.Errors = append(info.Errors, error)
