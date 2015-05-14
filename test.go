@@ -1,8 +1,8 @@
 package main
 import (
-	"github.com/franela/goreq"
+	//"github.com/franela/goreq"
 	"fmt"
-	"time"
+	//"time"
 )
 
 const (
@@ -10,14 +10,16 @@ const (
 )
 
 func main() {
+	/*
 	resp, _ := goreq.Request {Uri:"http://www.adicomgroup.com/",
 		RedirectHeaders:true,
 		MaxRedirects:20,
 		Insecure: true,
 		UserAgent: USER_AGENT,
 		Compression:goreq.Deflate(),
-		Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+	Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,* /*;q=0.8",
 		Timeout: time.Duration(60) * time.Second}.Do()
-
-	fmt.Printf("%#v", resp.Response)
+	*/
+	var x int64 = 10
+	fmt.Printf("%d", x)
 }
