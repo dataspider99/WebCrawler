@@ -629,8 +629,8 @@ func main() {
 	writer := csv.NewWriter(csvfile)
 	writer2 := csv.NewWriter(csvfile2)
 
-	domain_resolver := make(chan *Urltest, concurrency)
-	domain_resolved := make(chan Urltest, concurrency)
+	//domain_resolver := make(chan *Urltest, concurrency)
+	//domain_resolved := make(chan Urltest, concurrency)
 	download_url := make(chan *Urltest, concurrency * 4)
 	download_completed := make(chan Urltest, concurrency * 2)
 	completion := make(chan bool, 3)
@@ -639,8 +639,8 @@ func main() {
 
 	go print_stats(stats_channel)
 
-	go verify_domain(domain_resolver, domain_resolved, download_url, download_completed, completion)
-	go writer_result(writer2, domain_resolved, completion)
+	//go verify_domain(domain_resolver, domain_resolved, download_url, download_completed, completion)
+	//go writer_result(writer2, domain_resolved, completion)
 	go download_urls(download_url, download_completed)
 	go completed_download(download_completed, completion)
 	errorCount := 0
@@ -670,13 +670,13 @@ func main() {
 		line++
 		if check_url_download_needed(test) {
 			print(data[1]+"\n")
-			domain_resolver <- &test
+			download_url <- &test
 		}
 	}
 
 	fmt.Println("Waiting for resolutions to get over")
 	println("Closing domain resolver")
-	close(domain_resolver)
+	//close(domain_resolver)
 	writer.Flush()
 	<-completion
 	<-completion
