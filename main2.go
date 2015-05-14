@@ -322,8 +322,14 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 			}()
 
 			stats.in_download_queue.IncOne()
-			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
+
 			cache_url := info.CleanedURL
+			_, existing := urls_maps.Get(cache_url)
+			if existing {
+				return
+			}
+
+			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
 			println("Begining download for - " + info.CleanedURL)
 			urls_maps.Set(cache_url, info.CleanedURL)
 			compression := goreq.Gzip()
@@ -364,7 +370,9 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 				if (resp.StatusCode >= 400 && resp.StatusCode < 500) {
 					parsed_url, _ := url.Parse(info.CleanedURL)
 					parsed_url.Path = "/"
-					info.CleanedURL = parsed_url.String()
+
+					download_urls <- &Urltest{OrgURL: info.OrgURL, CleanedURL: parsed_url.String(), DomainValid: true, SourceDomain: info.SourceDomain}
+					//info.CleanedURL = parsed_url.String()
 				}
 
 				if (resp.StatusCode >= 400 && resp.StatusCode <=999) {
@@ -576,7 +584,7 @@ func completed_download(download_complete chan Urltest, completed chan <- bool) 
 		//err = coll.Insert(&info)
 		_, err := coll.UpsertId(info.CleanedURL, &info)
 		if err != nil {
-			panic(err.Error())
+			fmt.Println(err.Error())
 		}
 	}
 
@@ -594,10 +602,10 @@ var conn *mgo.Session
 var coll *mgo.Collection
 
 func main() {
+	flag.Parse()
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	conn = get_mongo_connection()
 	coll = conn.DB("test2").C(mongo_collection)
-	flag.Parse()
 	if flag.NArg() > 0 {
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -667,7 +675,10 @@ func main() {
 		writer.Write([]string{clean_url})
 
 		test := Urltest{CleanedURL:clean_url, OrgURL:org_url, Index: line}
+		parsed_url, _ := url.Parse(clean_url)
+		test.SourceDomain, _ = publicsuffix.EffectiveTLDPlusOne(parsed_url.Host)
 		line++
+		test.DomainValid = true
 		if check_url_download_needed(test) {
 			print(data[1]+"\n")
 			download_url <- &test
