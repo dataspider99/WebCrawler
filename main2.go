@@ -389,6 +389,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 				info.HasRedirect = !(resp.Uri == info.CleanedURL)
 				info.ContentType = resp.Header.Get("Content-Type")
 				info.Content, err = resp.Body.ToString()
+				info.Content = info.Content[:2097152]
 				if err != nil {
 					stats.parsing_errors.IncOne()
 					info.AppendError(err.Error())
