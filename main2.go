@@ -303,7 +303,7 @@ func check_url_download_needed(info Urltest) (bool) {
 	case count > 0:
 		if (x.StatusCode != 0) {
 			stats.already_downloaded.IncOne()
-			urls_maps.Set(cache_url, info.CleanedURL)
+			urls_maps.Set(cache_url, "")
 			return false
 		}
 	}
@@ -311,11 +311,11 @@ func check_url_download_needed(info Urltest) (bool) {
 	return true
 }
 
-func download_urls(download_urls chan *Urltest, download_completed chan <- Urltest) {
+func download_urls(download_urls chan Urltest, download_completed chan <- Urltest) {
 	sem := make(chan bool, concurrency)
 	for info := range (download_urls) {
 		sem <- true
-		go func(info *Urltest) {
+		go func(info Urltest) {
 			defer func() {
 				<-sem
 				stats.in_download_queue.DecOne()
@@ -331,7 +331,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 
 			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
 			println("Begining download for - " + info.CleanedURL)
-			urls_maps.Set(cache_url, info.CleanedURL)
+			urls_maps.Set(cache_url, "")
 			compression := goreq.Gzip()
 			if info.RetryCount > 0 {
 				compression = nil
@@ -357,7 +357,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 					defer func() {download_urls <- info}()
 				}else {
 					stats.download_failed.IncOne()
-					download_completed <- *info
+					download_completed <- info
 				}
 				//stats.in_download_queue.DecOne()
 				return
@@ -371,7 +371,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 					parsed_url, _ := url.Parse(info.CleanedURL)
 					parsed_url.Path = "/"
 
-					download_urls <- &Urltest{OrgURL: info.OrgURL, CleanedURL: parsed_url.String(), DomainValid: true, SourceDomain: info.SourceDomain}
+					download_urls <- Urltest{OrgURL: info.OrgURL, CleanedURL: parsed_url.String(), DomainValid: true, SourceDomain: info.SourceDomain}
 					//info.CleanedURL = parsed_url.String()
 				}
 
@@ -452,7 +452,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 				info.Status = resp.Status
 				stats.download_completed.IncOne()
 				fmt.Println("Download completed for - " + info.CleanedURL)
-				download_completed <- *info
+				download_completed <- info
 			}
 		}(info)
 	}
@@ -462,7 +462,7 @@ func download_urls(download_urls chan *Urltest, download_completed chan <- Urlte
 	println("Downloader finished. Exiting downloader code")
 }
 
-func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, download_url chan <- *Urltest, download_completed chan <- Urltest, completed chan <- bool) {
+func verify_domain(urls <-chan Urltest, domain_resolved chan <- Urltest, download_url chan <- Urltest, download_completed chan <- Urltest, completed chan <- bool) {
 	var wg sync.WaitGroup
 	sem := make(chan bool, concurrency)
 
@@ -473,7 +473,7 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, downlo
 
 		wg.Add(1)
 		sem <- true
-		go func(info *Urltest, wg *sync.WaitGroup) {
+		go func(info Urltest, wg *sync.WaitGroup) {
 
 			defer func() {
 				wg.Done()
@@ -502,11 +502,11 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, downlo
 				info.DomainValid = false
 				info.Errors = append(info.Errors, err2.Error())
 				stats.failed_domains.IncOne()
-				download_completed <- *info
+				download_completed <- info
 			}else {
 				info.DomainValid = true
 				stats.completed_domains.IncOne()
-				if check_url_download_needed(*info) {
+				if check_url_download_needed(info) {
 					download_url <- info
 				}else {
 					//println("No need to download - " + info.CleanedURL)
@@ -515,7 +515,7 @@ func verify_domain(urls <-chan *Urltest, domain_resolved chan <- Urltest, downlo
 
 
 
-			domain_resolved <- *info
+			domain_resolved <- info
 		}(info, &wg)
 
 	}
@@ -637,9 +637,9 @@ func main() {
 	writer := csv.NewWriter(csvfile)
 	writer2 := csv.NewWriter(csvfile2)
 
-	//domain_resolver := make(chan *Urltest, concurrency)
+	//domain_resolver := make(chan Urltest, concurrency)
 	//domain_resolved := make(chan Urltest, concurrency)
-	download_url := make(chan *Urltest, concurrency * 4)
+	download_url := make(chan Urltest, concurrency * 4)
 	download_completed := make(chan Urltest, concurrency * 2)
 	completion := make(chan bool, 3)
 	stats_channel := make(chan bool, 1)
@@ -681,7 +681,7 @@ func main() {
 		test.DomainValid = true
 		if check_url_download_needed(test) {
 			print(data[1]+"\n")
-			download_url <- &test
+			download_url <- test
 		}
 	}
 
