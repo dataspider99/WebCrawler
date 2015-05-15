@@ -43,7 +43,8 @@ type domain_info struct {
 	IsValid bool
 	HasRobotTxt bool
 }
-var urls_maps cmap.ConcurrentMap
+
+/// /var urls_maps cmap.ConcurrentMap
 
 type url_info struct {
 	ParsedUrl string
@@ -101,7 +102,7 @@ func init() {
 
 	flag.IntVar(&timeout, "timeout", 60, "Timeout for downloads of url")
 	goreq.SetConnectTimeout(time.Second * 30)
-	urls_maps = cmap.New()
+	//urls_maps = cmap.New()
 	respaces = regexp.MustCompile(`^\s+|\s+$`)
 	reww = regexp.MustCompile(`^(?i)\s*(\.)*(ww|wwww)\s*\.`)
 	redots = regexp.MustCompile(`\s*[.·]+\s*`)
@@ -288,23 +289,23 @@ func urljoin(base_url string, new_url string) (string) {
 
 func check_url_download_needed(info Urltest) (bool) {
 	cache_url := info.CleanedURL //strings.Replace(info.CleanedURL, "//www.", "//", -1)
-	_, inqueue := urls_maps.Get(cache_url)
+	//_, inqueue := urls_maps.Get(cache_url)
 	count, _ := coll.FindId(info.CleanedURL).Count()
-	if count ==0 && ! inqueue {
+	if count ==0 { //&& ! inqueue {
 		coll.Insert(&info)
 	}
 
 	var x Urltest
 	coll.FindId(info.CleanedURL).One(&x)
 	switch true {
-	case inqueue:
-		stats.duplicate_urls.IncOne() //.duplicate_urls++
-		return false
+	//case inqueue:
+	//	stats.duplicate_urls.IncOne() //.duplicate_urls++
+	//	return false
 	case count > 0:
 		return false
 		if (x.StatusCode != 0) {
 			stats.already_downloaded.IncOne()
-			urls_maps.Set(cache_url, "")
+			//urls_maps.Set(cache_url, "")
 			return false
 		}
 	}
@@ -325,14 +326,14 @@ func download_urls(download_urls chan Urltest, download_completed chan <- Urltes
 			stats.in_download_queue.IncOne()
 
 			cache_url := info.CleanedURL
-			_, existing := urls_maps.Get(cache_url)
-			if existing {
-				return
-			}
+			//_, existing := urls_maps.Get(cache_url)
+			//if existing {
+			//	return
+			//}
 
 			//cache_url := strings.Replace(info.CleanedURL, "//www.", "//", -1)
 			println("Begining download for - " + info.CleanedURL)
-			urls_maps.Set(cache_url, "")
+			//urls_maps.Set(cache_url, "")
 			compression := goreq.Gzip()
 			if info.RetryCount > 0 {
 				compression = nil
@@ -398,7 +399,10 @@ func download_urls(download_urls chan Urltest, download_completed chan <- Urltes
 				info.DestinationDomain = dm
 				info.HasRedirect = !(resp.Uri == info.CleanedURL)
 				info.ContentType = resp.Header.Get("Content-Type")
-				info.Content, err = resp.Body.ToString()
+
+				if resp.Body != nil {
+					info.Content, err = resp.Body.ToString()
+				}
 
 				if len(info.Content) > 2097152 {
 					info.Content = info.Content[:2097152]
@@ -409,7 +413,7 @@ func download_urls(download_urls chan Urltest, download_completed chan <- Urltes
 					info.AppendError(err.Error())
 				} else {
 					doc, err := gokogiri.ParseHtml([]byte(info.Content))
-					defer doc.Free()
+					//Removed defer doc.Free() from here as it could potentially lead to a crash when the doc itself is nil
 
 					if err != nil {
 						println("Failed to parse url - " + err.Error() + " " + info.CleanedURL)
@@ -417,6 +421,7 @@ func download_urls(download_urls chan Urltest, download_completed chan <- Urltes
 						info.ParseFailed = true
 						stats.parsing_errors.IncOne()
 					} else {
+						defer doc.Free()
 						links_xpath := xpath.Compile("//a[@href] | //frame[@src] | //iframe[@src]")
 						root := doc.Root()
 						if root == nil {
