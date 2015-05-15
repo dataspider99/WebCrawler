@@ -301,6 +301,7 @@ func check_url_download_needed(info Urltest) (bool) {
 		stats.duplicate_urls.IncOne() //.duplicate_urls++
 		return false
 	case count > 0:
+		return false
 		if (x.StatusCode != 0) {
 			stats.already_downloaded.IncOne()
 			urls_maps.Set(cache_url, "")
