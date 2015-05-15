@@ -19,7 +19,7 @@ import (
 	"runtime"
 	"gopkg.in/mgo.v2"
 	"path"
-	"github.com/streamrail/concurrent-map"
+	//"github.com/streamrail/concurrent-map"
 	"sync/atomic"
 )
 
@@ -288,7 +288,7 @@ func urljoin(base_url string, new_url string) (string) {
 }
 
 func check_url_download_needed(info Urltest) (bool) {
-	cache_url := info.CleanedURL //strings.Replace(info.CleanedURL, "//www.", "//", -1)
+	//cache_url := info.CleanedURL //strings.Replace(info.CleanedURL, "//www.", "//", -1)
 	//_, inqueue := urls_maps.Get(cache_url)
 	count, _ := coll.FindId(info.CleanedURL).Count()
 	if count ==0 { //&& ! inqueue {
@@ -325,7 +325,7 @@ func download_urls(download_urls chan Urltest, download_completed chan <- Urltes
 
 			stats.in_download_queue.IncOne()
 
-			cache_url := info.CleanedURL
+			//cache_url := info.CleanedURL
 			//_, existing := urls_maps.Get(cache_url)
 			//if existing {
 			//	return
