@@ -583,12 +583,18 @@ func print_stats(stats_channel chan bool) {
 
 
 func completed_download(download_complete chan Urltest, completed chan <- bool) {
+	var counter int64 = 0
 	for info := range download_complete {
 		//fmt.Println("%#v", info)
 		println("Document received for - " + info.CleanedURL)
 		info.Time = time.Now().UTC()
 		//err = coll.Insert(&info)
 		_, err := coll.UpsertId(info.CleanedURL, &info)
+		counter++
+		if counter > 50 {
+			runtime.GC()
+			counter = 0
+		}
 		if err != nil {
 			fmt.Println(err.Error())
 		}
